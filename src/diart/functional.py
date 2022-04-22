@@ -7,6 +7,24 @@ from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
+from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+
+
+class SpeechBrainEmbedding:
+    def __init__(self, device: Optional[torch.device] = None):
+        self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb", device)
+
+    def __call__(self, waveform, weights):
+        with torch.no_grad():
+            inputs = torch.from_numpy(waveform.data.T).float().unsqueeze(0).to(self.model.device)
+            # weights has shape (num_local_speakers, num_frames)
+            weights = torch.from_numpy(weights.data.T).float().to(self.model.device)
+            # min-max normalization
+            # weights = (weights - weights.min()) / (weights.max() - weights.min())
+            inputs = inputs.repeat(weights.shape[0], 1, 1)
+            output = self.model(inputs, weights)
+
+        return torch.from_numpy(output).float()
 
 
 class FrameWiseModel:
