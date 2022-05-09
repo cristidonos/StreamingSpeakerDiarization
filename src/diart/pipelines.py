@@ -118,7 +118,7 @@ class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
         self.segmentation = blocks.FramewiseModel(config.segmentation, self.config.device)
-        self.embedding = blocks.ChunkwiseModel(config.embedding, self.config.device)
+        self.embedding = blocks.SpeechBrainEmbedding()
         self.speaker_tracking = OnlineSpeakerTracking(config)
         msg = "Invalid latency requested"
         assert self.config.step <= self.config.latency <= self.duration, msg

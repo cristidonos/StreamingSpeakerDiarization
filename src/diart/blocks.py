@@ -12,23 +12,6 @@ from .mapping import SpeakerMap, SpeakerMapBuilder
 from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
 
 
-class SpeechBrainEmbedding:
-    def __init__(self, device: Optional[torch.device] = None):
-        self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb", device)
-
-    def __call__(self, waveform, weights):
-        with torch.no_grad():
-            inputs = torch.from_numpy(waveform.data.T).float().unsqueeze(0).to(self.model.device)
-            # weights has shape (num_local_speakers, num_frames)
-            weights = torch.from_numpy(weights.data.T).float().to(self.model.device)
-            # min-max normalization
-            # weights = (weights - weights.min()) / (weights.max() - weights.min())
-            inputs = inputs.repeat(weights.shape[0], 1, 1)
-            output = self.model(inputs, weights)
-
-        return torch.from_numpy(output).float()
-
-
 TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 
@@ -125,7 +108,7 @@ class ChunkwiseModel:
                 weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
                 inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
                 output = rearrange(
-                    self.model(inputs, weights=weights),
+                    self.model(inputs, weights),
                     "(batch spk) feat -> batch spk feat",
                     batch=batch_size,
                     spk=num_speakers
@@ -133,6 +116,31 @@ class ChunkwiseModel:
             else:
                 output = self.model(inputs)
             return output.squeeze().cpu()
+
+
+class SpeechBrainEmbedding:
+    def __init__(self):
+        self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb", get_devices(needs=1)[0])
+
+    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
+        with torch.no_grad():
+            inputs = resolve_features(waveform).to(self.model.device)
+            inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
+            if weights is not None:
+                weights = resolve_features(weights).to(self.model.device)
+                batch_size, _, num_speakers = weights.shape
+                inputs = inputs.repeat(1, num_speakers, 1)
+                weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
+                inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
+                output = rearrange(
+                    self.model(inputs, weights),
+                    "(batch spk) feat -> batch spk feat",
+                    batch=batch_size,
+                    spk=num_speakers
+                )
+            else:
+                output = self.model(inputs)
+            return torch.from_numpy(output).squeeze()
 
 
 class OverlappedSpeechPenalty:
