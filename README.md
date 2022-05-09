@@ -18,28 +18,26 @@
 <img width="51%" src="/visualization.gif" title="Real-time diarization example" />
 </p>
 
-## Demo
-
-You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
+## Getting started
 
 ### Stream a recorded conversation
 
 ```shell
-python -m diart.demo /path/to/audio.wav
+python -m diart.stream /path/to/audio.wav
 ```
 
 ### Stream from your microphone
 
 ```shell
-python -m diart.demo microphone
+python -m diart.stream microphone
 ```
 
-See `python -m diart.demo -h` for more information.
+See `python -m diart.stream -h` for more options.
 
 ## Build your own pipeline
 
 Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
-The streaming implementation is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
+Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example
 
@@ -50,16 +48,16 @@ import rx
 import rx.operators as ops
 import diart.operators as myops
 from diart.sources import MicrophoneAudioSource
-import diart.functional as fn
+import diart.blocks as blocks
 
 sample_rate = 16000
 mic = MicrophoneAudioSource(sample_rate)
 
 # Initialize independent modules
-segmentation = fn.FrameWiseModel("pyannote/segmentation")
-embedding = fn.ChunkWiseModel("pyannote/embedding")
-osp = fn.OverlappedSpeechPenalty(gamma=3, beta=10)
-normalization = fn.EmbeddingNormalization(norm=1)
+segmentation = blocks.FramewiseModel("pyannote/segmentation")
+embedding = blocks.ChunkwiseModel("pyannote/embedding")
+osp = blocks.OverlappedSpeechPenalty(gamma=3, beta=10)
+normalization = blocks.EmbeddingNormalization(norm=1)
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
 regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate))
@@ -91,7 +89,7 @@ torch.Size([4, 512])
 1) Create environment:
 
 ```shell
-conda create -n diarization python==3.8
+conda create -n diarization python=3.8
 conda activate diarization
 ```
 
@@ -123,45 +121,43 @@ Diart is the official implementation of the paper *[Overlap-aware low-latency on
 If you found diart useful, please make sure to cite our paper:
 
 ```bibtex
-Awaiting paper publication (ASRU 2021).
+@inproceedings{diart,  
+  author={Coria, Juan M. and Bredin, Hervé and Ghannay, Sahar and Rosset, Sophie},  
+  booktitle={2021 IEEE Automatic Speech Recognition and Understanding Workshop (ASRU)},   
+  title={Overlap-Aware Low-Latency Online Speaker Diarization Based on End-to-End Local Segmentation}, 
+  year={2021},
+  pages={1139-1146},
+  doi={10.1109/ASRU51503.2021.9688044},
+}
 ```
 
 ##  Reproducibility
 
 ![Results table](/table1.png)
 
-To reproduce the results of the paper, use the following hyper-parameters:
+Diart aims to be lightweight and capable of real-time streaming in practical scenarios.
+Its performance is very close to what is reported in the paper (and sometimes even a bit better).
 
-Dataset     | latency | tau    | rho    | delta 
-------------|---------|--------|--------|------
-DIHARD III  | any     | 0.555  | 0.422  | 1.517  
-AMI         | any     | 0.507  | 0.006  | 1.057  
-VoxConverse | any     | 0.576  | 0.915  | 0.648  
-DIHARD II   | 1s      | 0.619  | 0.326  | 0.997  
-DIHARD II   | 5s      | 0.555  | 0.422  | 1.517
+To obtain the best results, make sure to use the following hyper-parameters:
 
-For instance, for a DIHARD III configuration:
+| Dataset     | latency | tau    | rho    | delta |
+|-------------|---------|--------|--------|-------|
+| DIHARD III  | any     | 0.555  | 0.422  | 1.517 |
+| AMI         | any     | 0.507  | 0.006  | 1.057 |
+| VoxConverse | any     | 0.576  | 0.915  | 0.648 |
+| DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
+| DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
+
+`diart.benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
 ```shell
-python -m diart.demo /path/to/file.wav --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
+python -m diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
 ```
 
-And then to obtain the diarization error rate:
+`diart.benchmark` runs a faster inference and evaluation by pre-calculating model outputs in batches.
+See `python -m diart.benchmark -h` for more options.
 
-```python
-from pyannote.metrics.diarization import DiarizationErrorRate
-from pyannote.database.util import load_rttm
-
-metric = DiarizationErrorRate()
-hypothesis = load_rttm("/output/dir/output.rttm")
-hypothesis = list(hypothesis.values())[0]  # Extract hypothesis from dictionary
-reference = load_rttm("/path/to/reference.rttm")
-reference = list(reference.values())[0]  # Extract reference from dictionary
-
-der = metric(reference, hypothesis)
-```
-
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format for every entry of Table 1 and Figure 5 in the paper. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
 ![Figure 5](/figure5.png)
 

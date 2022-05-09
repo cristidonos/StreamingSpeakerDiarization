@@ -1,13 +1,53 @@
 import random
 import time
 from queue import SimpleQueue
-from typing import Tuple, Text, Optional, Iterable
+from typing import Tuple, Text, Optional, Iterable, List
 
+import numpy as np
 import sounddevice as sd
 from einops import rearrange
 from pyannote.audio.core.io import Audio, AudioFile
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
+
+
+class ChunkLoader:
+    """Loads an audio file and chunks it according to a given window and step size.
+
+    Parameters
+    ----------
+    sample_rate: int
+        Sample rate to load audio.
+    window_duration: float
+        Duration of the chunk in seconds.
+    step_duration: float
+        Duration of the step between chunks in seconds.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        window_duration: float,
+        step_duration: float,
+    ):
+        self.audio = Audio(sample_rate, mono=True)
+        self.window_duration = window_duration
+        self.step_duration = step_duration
+        self.window_samples = int(round(window_duration * sample_rate))
+        self.step_samples = int(round(step_duration * sample_rate))
+
+    def get_chunks(self, file: AudioFile) -> np.ndarray:
+        # FIXME last chunk should be padded instead of ignored
+        waveform, _ = self.audio(file)
+        return rearrange(
+            waveform.unfold(1, self.window_samples, self.step_samples),
+            "channel chunk frame -> chunk channel frame",
+        ).numpy()
+
+    def num_chunks(self, file: AudioFile) -> int:
+        # FIXME last chunk should be padded instead of ignored
+        numerator = self.audio.get_duration(file) - self.window_duration + self.step_duration
+        return int(numerator // self.step_duration)
 
 
 class AudioSource:
@@ -35,6 +75,11 @@ class AudioSource:
     @property
     def duration(self) -> Optional[float]:
         """The duration of the stream if known. Defaults to None (unknown duration)"""
+        return None
+
+    @property
+    def length(self) -> Optional[int]:
+        """Return the number of audio chunks emitted by this source"""
         return None
 
     def read(self):
@@ -67,6 +112,9 @@ class AudioFileReader:
     def get_duration(self, file: AudioFile) -> float:
         return self.audio.get_duration(file)
 
+    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+        return None
+
     def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
         """Return an iterable over the file's samples"""
         raise NotImplementedError
@@ -91,24 +139,23 @@ class RegularAudioFileReader(AudioFileReader):
         step_duration: float,
     ):
         super().__init__(sample_rate)
-        self.window_duration = window_duration
-        self.step_duration = step_duration
-        self.window_samples = int(round(self.window_duration * self.sample_rate))
-        self.step_samples = int(round(self.step_duration * self.sample_rate))
+        self.chunk_loader = ChunkLoader(
+            sample_rate, window_duration, step_duration
+        )
 
     @property
     def is_regular(self) -> bool:
         return True
 
+    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+        """Return the number of chunks emitted for `file`"""
+        return self.chunk_loader.num_chunks(file)
+
     def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
-        waveform, _ = self.audio(file)
-        chunks = rearrange(
-            waveform.unfold(1, self.window_samples, self.step_samples),
-            "channel chunk frame -> chunk channel frame",
-        ).numpy()
+        chunks = self.chunk_loader.get_chunks(file)
         for i, chunk in enumerate(chunks):
             w = SlidingWindow(
-                start=i * self.step_duration,
+                start=i * self.chunk_loader.step_duration,
                 duration=self.resolution,
                 step=self.resolution
             )
@@ -164,36 +211,62 @@ class FileAudioSource(AudioSource):
         Unique identifier of the audio source.
     reader: AudioFileReader
         Determines how the file will be read.
+    profile: bool
+        If True, prints the average processing time of emitting a chunk. Defaults to False.
     """
     def __init__(
         self,
         file: AudioFile,
         uri: Text,
-        reader: AudioFileReader
+        reader: AudioFileReader,
+        profile: bool = False,
     ):
         super().__init__(uri, reader.sample_rate)
         self.reader = reader
         self._duration = self.reader.get_duration(file)
         self.file = file
+        self.profile = profile
 
     @property
     def is_regular(self) -> bool:
-        """The regularity depends on the reader"""
+        # The regularity depends on the reader
         return self.reader.is_regular
 
     @property
     def duration(self) -> Optional[float]:
-        """The duration of a file is known"""
+        # The duration of a file is known
         return self._duration
+
+    @property
+    def length(self) -> Optional[int]:
+        # Only the reader can know how many chunks are going to be emitted
+        return self.reader.get_num_chunks(self.file)
+
+    def _check_print_time(self, times: List[float]):
+        if self.profile:
+            print(
+                f"File {self.uri}: took {np.mean(times).item():.2f} seconds/chunk "
+                f"(+/- {np.std(times).item():.2f} seconds/chunk) "
+                f"-- based on {len(times)} inputs"
+            )
 
     def read(self):
         """Send each chunk of samples through the stream"""
+        times = []
         for waveform in self.reader.iterate(self.file):
             try:
-                self.stream.on_next(waveform)
+                if self.profile:
+                    # Profiling assumes that on_next is blocking
+                    start_time = time.monotonic()
+                    self.stream.on_next(waveform)
+                    times.append(time.monotonic() - start_time)
+                else:
+                    self.stream.on_next(waveform)
             except Exception as e:
+                self._check_print_time(times)
                 self.stream.on_error(e)
         self.stream.on_completed()
+        self._check_print_time(times)
 
 
 class MicrophoneAudioSource(AudioSource):
