@@ -31,7 +31,7 @@ class PipelineConfig:
         beta: float = 10,
         max_speakers: int = 20,
         device: Optional[torch.device] = None,
-        skip: int = 1,
+        skip: float = 1,
     ):
         self.segmentation = segmentation
         self.embedding = embedding
