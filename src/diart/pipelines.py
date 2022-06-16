@@ -31,6 +31,7 @@ class PipelineConfig:
         beta: float = 10,
         max_speakers: int = 20,
         device: Optional[torch.device] = None,
+        skip: bool = False
     ):
         self.segmentation = segmentation
         self.embedding = embedding
@@ -48,6 +49,7 @@ class PipelineConfig:
         self.device = device
         if self.device is None:
             self.device = torch.device("cpu")
+        self.skip=skip
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """
