@@ -24,7 +24,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to `root`")
     parser.add_argument('--skip', default=0, type=int)
     args = parser.parse_args()
-
+    
+    print(args)
+    
     # Set benchmark configuration
     benchmark = Benchmark(args.root, args.reference, args.output)
 
