@@ -143,11 +143,18 @@ class Benchmark:
                 )
                 observable = pipeline.from_source(source, output_waveform=False)
             else:
-                observable = pipeline.from_file(
-                    filepath,
-                    batch_size=batch_size,
-                    desc=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
-                )
+                try:
+                    observable = pipeline.from_file(
+                        filepath,
+                        batch_size=batch_size,
+                        desc=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
+                    )
+                except Exception as err:
+                    print('\nDIART: Error pre-calculating features for %s.' % filepath.stem) 
+                    print(err)
+                    print('\n')
+                    continue
+                        
 
             observable.pipe(
                 dops.progress(
