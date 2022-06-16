@@ -31,7 +31,7 @@ if __name__ == "__main__":
     benchmark = Benchmark(args.root, args.reference, args.output)
 
     # Define online speaker diarization pipeline
-    pipeline = OnlineSpeakerDiarization(PipelineConfig(
+    pipeline_config = PipelineConfig(
         step=args.step,
         latency=args.latency,
         tau_active=args.tau,
@@ -42,6 +42,7 @@ if __name__ == "__main__":
         max_speakers=args.max_speakers,
         device=torch.device("cuda") if args.gpu else None,
         skip=args.skip,
-    ))
+    )
+    pipeline = OnlineSpeakerDiarization(pipeline_config)
 
     benchmark(pipeline, args.batch_size)
