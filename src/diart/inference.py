@@ -12,6 +12,8 @@ import diart.sources as src
 from diart.pipelines import OnlineSpeakerDiarization
 from diart.sinks import RTTMWriter, RealTimePlot
 
+import os
+
 
 class RealTimeInference:
     """
@@ -155,16 +157,24 @@ class Benchmark:
                     print('\n')
                     continue
                         
-
-            observable.pipe(
-                dops.progress(
-                    desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
-                    total=num_chunks,
-                    leave=source is None
+            try:
+                observable.pipe(
+                    dops.progress(
+                        desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                        total=num_chunks,
+                        leave=source is None
+                    )
+                ).subscribe(
+                    RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm")
                 )
-            ).subscribe(
-                RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm")
-            )
+            except Exception as err:
+                print('\nDIART: Error streaming or writting rttm for %s.' % filepath.stem) 
+                print(err)
+                print('\n')
+                # remove possibly incomplete rttm
+                if os.path.isfile(self.output_path / f"{filepath.stem}.rttm"):
+                    os.remove(self.output_path / f"{filepath.stem}.rttm")
+                continue
 
             if source is not None:
                 source.read()
