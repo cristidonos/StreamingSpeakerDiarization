@@ -46,8 +46,8 @@ class PipelineConfig:
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
+        self.skip = skip
         self.device = device
-        self.skip=skip
         if self.device is None:
             self.device = torch.device("cpu")
         
