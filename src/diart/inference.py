@@ -129,6 +129,13 @@ class Benchmark:
         """
         chunk_loader = src.ChunkLoader(pipeline.sample_rate, pipeline.duration, pipeline.config.step)
         audio_file_paths = list(self.speech_path.iterdir())
+        if pipeline.config.skip:
+            #skip files that already have rttm files
+            audio_file_paths = [
+               f for f in audio_file_paths if f.name.replace(''.join(f.suffixes[-2:]), '.rttm') not in [r.name for r in list(self.output_path.iterdir())]
+            ]
+
+            
         num_audio_files = len(audio_file_paths)
         for i, filepath in enumerate(audio_file_paths):
             num_chunks = chunk_loader.num_chunks(filepath)
