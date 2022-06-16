@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", default=32, type=int, help="For segmentation and embedding pre-calculation. If BATCH_SIZE < 2, run fully online and estimate real-time latency. Defaults to 32")
     parser.add_argument("--gpu", dest="gpu", action="store_true", help=argdoc.GPU)
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to `root`")
-    parser.add_argument('--skip', default=0, type=int)
+    parser.add_argument('--skip', default=0, type=float)
     args = parser.parse_args()
     
     print(args)
